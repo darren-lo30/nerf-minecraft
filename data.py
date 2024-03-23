@@ -40,9 +40,22 @@ def load_data(path):
 
   return dataset
 
-def get_rays(img, transform, focal_length):
+def get_rays(img, focal_length, camera_to_world):
   height = img.shape[0]
   width = img.shape[1]
 
-  points = torch.tensor(torch.meshgrid(torch.arange(width), torch.arange(height)))
+  # Camera space
+  c_ray_dir = torch.cartesian_prod(torch.arange(width), torch.arange(height), torch.tensor([focal_length]))
+  print(c_ray_dir)
+
+  c_ray_origin = torch.zeros((3, 1))
+  # In camera space, the ray origins is 0, the ray direction are the points
+  # Transform both to world space
+
+  # World space
+  w_ray_dir = camera_to_world @ c_ray_dir
+  w_ray_origin = camera_to_world @ c_ray_origin
+
+  return w_ray_dir, w_ray_origin
+
   
