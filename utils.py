@@ -9,5 +9,3 @@ def sample_bins_uniform(batch_size, N, start, end):
   z = torch.zeros((batch_size, 1))
   t = torch.cat((z, t), dim = 1)
   return t
-
-def get_camera_to_world(transform_mat):
