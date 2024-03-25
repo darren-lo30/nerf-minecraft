@@ -1,8 +1,8 @@
 from simple_nerf import SimpleNERFModel
-from data import get_dataloaders
+from data import load_data
 from utils import *
 if __name__ == '__main__':
-  train, val, test = get_dataloaders('./data/hotdog')
-  nerf = SimpleNERFModel()
-  nerf.train(100, train, val)
+  data = load_data('./data/hotdog')
+  nerf = SimpleNERFModel(device=get_device())
+  nerf.train(100, data['train'], data['val'])
   

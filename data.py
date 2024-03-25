@@ -5,7 +5,18 @@ import torch
 from torch import nn
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from random import randrange
 
+class NERFData():
+  def __init__(self, imgs, transforms, focal_length):
+    self.imgs = imgs
+    self.transforms = transforms
+    self.focal_length = focal_length
+
+  def sample(self):
+    idx = randrange(len(self.imgs))
+    return self.imgs[idx], self.transforms[idx]
+  
 def load_data(path):
   splits = ['train', 'test', 'val']
   files = {}
@@ -28,8 +39,6 @@ def load_data(path):
 
       img = torchvision.io.read_image(img_path)
 
-      rotation = torch.tensor(frame['rotation'])
-
       transform_mat = torch.tensor(frame['transform_matrix'])
 
       split_imgs.append(img)
@@ -40,17 +49,22 @@ def load_data(path):
       width = img.shape[1]
       # Distance from camera to img plane
       focal_length = (0.5 * width) / np.tan(0.5 * camera_angle)
-      dataset[split] = (split_imgs, split_transforms, focal_length)
+      dataset[split] = NERFData(split_imgs, split_transforms, focal_length)
 
   return dataset
 
 def get_rays(img, focal_length, camera_to_world):
-  height = img.shape[0]
-  width = img.shape[1]
+  height = img.shape[1]
+  width = img.shape[2]
 
   # Camera space
-  c_ray_dir = torch.cartesian_prod(torch.arange(width, dtype=torch.float32), torch.arange(height, dtype=torch.float32), torch.tensor([focal_length], dtype=torch.float32))
-  colors = img[c_ray_dir[:, 1].to(dtype=torch.int), c_ray_dir[:, 0].to(dtype=torch.int)]
+  x, y = torch.meshgrid(torch.arange(width, dtype=torch.float32), torch.arange(height, dtype=torch.float32), indexing='xy')
+  # Recenter and rescale
+  x = (x - width / 2) / focal_length
+  y = (y - height / 2) / focal_length
+  c_ray_dir = torch.stack([x, y, -torch.ones_like(x)], dim=-1).flatten(start_dim=0, end_dim=1)
+  colors = torch.flatten(img[:3, :, :], start_dim=1) / 255.
+  colors = colors.swapaxes(0, 1)
 
   c_ray_origin = torch.tensor([0, 0, 0, 1], dtype=torch.float32)
   # In camera space, the ray origins is 0, the ray direction are the points
@@ -62,26 +76,14 @@ def get_rays(img, focal_length, camera_to_world):
   w_ray_origin = camera_to_world @ c_ray_origin
   w_ray_origin = w_ray_origin[:3]  # Discard 4th coordinate
 
-  return w_ray_dir, w_ray_origin, colors
+  return w_ray_dir, w_ray_origin, colors  
 
-class NERFDataset(Dataset):
-  def __init__(self, imgs, transforms, focal_length):
-    self.rays = []
-    for (img, transform) in zip(imgs, transforms):
-      rays_d, rays_o, colors = get_rays(img, focal_length, transform)
-      for ray_d in rays_d:
-        self.rays.append((ray_d, rays_o, colors))
+class NERFRayDataset(Dataset):
+  def __init__(self, img, transform, focal_length):
+    self.rays_d, self.rays_o, self.colors = get_rays(img, focal_length, transform)
 
   def __len__(self):
-    return len(self.rays)
+    return len(self.rays_d)
   
   def __getitem__(self, index):
-    return self.rays[index]
-
-def get_dataloaders(path, batch_size = 256):
-  datasets = load_data(path)
-  train_data = DataLoader(NERFDataset(*datasets['train']), batch_size=batch_size, shuffle=True)
-  val_data = DataLoader(NERFDataset(*datasets['val']), batch_size=batch_size, shuffle=False)
-  test_data = DataLoader(NERFDataset(*datasets['test']), batch_size=batch_size, shuffle=False)
-
-  return train_data, val_data, test_data
+    return self.rays_d[index], self.rays_o, self.colors[index]

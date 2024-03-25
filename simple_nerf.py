@@ -1,6 +1,7 @@
 from torch import nn
 import torch
 from utils import *
+from data import *
 
 # Basic NERF with only one sampling method
 class SimpleNERF(nn.Module):
@@ -42,10 +43,10 @@ class PositionalEmbedding(nn.Module):
 
   def forward(self, x):
     coefs = torch.pow(2, torch.arange(0, self.dim)) * torch.pi
-    x = coefs * x.unsqueeze(dim = 2)
+    x = coefs.to(x.get_device()) * x.unsqueeze(dim = 2)
 
     # batch_size x 3 x 2L
-    embeddings = torch.zeros((x.shape[0], 3, self.dim * 2))
+    embeddings = torch.zeros((x.shape[0], 3, self.dim * 2), device=x.get_device())
     embeddings[:,:,::2] = torch.sin(x)
     embeddings[:,:,1::2] = torch.cos(x)
 
@@ -53,7 +54,7 @@ class PositionalEmbedding(nn.Module):
     return embeddings
 
 class SimpleNERFModel():
-  def __init__(self):
+  def __init__(self, device):
     # Hyperparameters
     self.t_near = 0
     self.t_far = 10
@@ -62,16 +63,14 @@ class SimpleNERFModel():
 
     color_embed_dim = 10
     density_embed_dim = 4
-    self.model = SimpleNERF(color_embed_dim, density_embed_dim)
+    self.model = SimpleNERF(color_embed_dim, density_embed_dim).to(device)
     self.optim = torch.optim.Adam(self.model.parameters(), self.lr)
-
-    # print(self.model)
-
+    self.device = device
     
   def compute_color(self, o, d):
     batch_size = d.shape[0]
     # Samples N points randomly from N evenly spaced bins, returns 0 and those N points totalling to N + 1 points
-    t = sample_bins_uniform(batch_size, self.N, self.t_near, self.t_far)
+    t = sample_bins_uniform(batch_size, self.N, self.t_near, self.t_far).to(self.device)
     deltas = t[:, :-1] - t[:, 1:]
     # Eliminate starting 0
     t = t[:, 1:]
@@ -96,15 +95,21 @@ class SimpleNERFModel():
     transmittances = torch.cumprod(1 - alphas, dim=1)
     color = torch.sum((transmittances * (1 - alphas)).unsqueeze(2) * colors, dim = 1)
 
-    return color
+    return color.to(device=self.device)
 
-  def train(self, num_epochs, train_data, valid_data):
+  def train(self, num_epochs, train_data, valid_data, batch_size = 4096):
     # print(train_data)
+    focal_length = train_data.focal_length
+
     for epoch in range(num_epochs):
-      for (rays_d, rays_o, colors) in train_data:
+      img, transform = train_data.sample()
+      rays_data = DataLoader(NERFRayDataset(img, transform, focal_length), batch_size=batch_size, shuffle=True)
+      
+      for (rays_d, rays_o, colors) in rays_data:
+        rays_d, rays_o, colors = rays_d.to(self.device), rays_o.to(self.device), colors.to(self.device)
+
         self.optim.zero_grad()
         pred_color = self.compute_color(rays_o, rays_d)
-
         loss = nn.functional.mse_loss(pred_color, colors, reduce='mean')
         loss.backward()
 
