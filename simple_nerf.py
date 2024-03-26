@@ -105,15 +105,20 @@ class SimpleNERFModel():
       img, transform = train_data.sample()
       rays_data = DataLoader(NERFRayDataset(img, transform, focal_length), batch_size=batch_size, shuffle=True)
       
+      total_loss = 0
       for (rays_d, rays_o, colors) in rays_data:
         rays_d, rays_o, colors = rays_d.to(self.device), rays_o.to(self.device), colors.to(self.device)
 
         self.optim.zero_grad()
         pred_color = self.compute_color(rays_o, rays_d)
-        loss = nn.functional.mse_loss(pred_color, colors, reduce='mean')
+        loss = nn.functional.mse_loss(pred_color, colors, reduce='sum')
         loss.backward()
+        total_loss += loss.cpu().detach()
 
         self.optim.step()
-      print(f'Average loss for epoch {epoch} was ...')
+
+      
+      total_loss /= len(rays_data.dataset)
+      print(f'Average loss for epoch {epoch} was ')
 
       
