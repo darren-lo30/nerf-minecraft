@@ -2,9 +2,8 @@ import os
 import json
 import torchvision
 import torch
-from torch import nn
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from random import randrange
 
 class NERFData():
@@ -13,9 +12,18 @@ class NERFData():
     self.transforms = transforms
     self.focal_length = focal_length
 
-  def sample(self):
+  def sample_rand_img_rays(self, num_rays):
     idx = randrange(len(self.imgs))
-    return self.imgs[idx], self.transforms[idx]
+    img, transform = self.imgs[idx], self.transforms[idx]
+
+    ray_d, ray_o, colors  = get_rays(img, self.focal_length, transform)
+    
+    ray_indices = np.random.choice(ray_d.shape[0], num_rays, replace=False)
+    sampled_ray_d = ray_d[ray_indices]
+    sampled_colors = colors[ray_indices]
+    ray_o = ray_o.expand(num_rays, -1)
+
+    return sampled_ray_d, ray_o, sampled_colors
   
 def load_data(path):
   splits = ['train', 'test', 'val']
