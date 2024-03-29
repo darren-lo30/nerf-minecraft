@@ -13,11 +13,12 @@ class NERFData():
     self.focal_length = focal_length
 
   def sample_rand_img_rays(self, num_rays):
-    idx = randrange(len(self.imgs))
+    idx = randrange(4)
     img, transform = self.imgs[idx], self.transforms[idx]
 
     ray_d, ray_o, colors  = get_rays(img, self.focal_length, transform)
     
+    num_rays = min(num_rays, img.shape[1] * img.shape[2])
     ray_indices = np.random.choice(ray_d.shape[0], num_rays, replace=False)
     sampled_ray_d = ray_d[ray_indices]
     sampled_colors = colors[ray_indices]

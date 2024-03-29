@@ -67,12 +67,14 @@ class SimpleNERFModel:
     self.t_near = 0
     self.t_far = 10
     self.N = 128
-    self.lr = 2e-4
+    self.lr = 5e-4
+
 
     color_embed_dim = 10
     density_embed_dim = 4
     self.model = SimpleNERF(color_embed_dim, density_embed_dim).to(device)
     self.optim = torch.optim.Adam(self.model.parameters(), self.lr)
+    # self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optim, 0.99)
     self.device = device
 
   def compute_color(self, o, d):
@@ -113,7 +115,6 @@ class SimpleNERFModel:
     batch_size=4096,
     img_folder = './results'
   ):
-    # print(train_data)
     for epoch in range(num_epochs):
       (rays_d, rays_o, colors) = train_data.sample_rand_img_rays(batch_size)
 
@@ -124,40 +125,41 @@ class SimpleNERFModel:
         colors,
         reduction="mean",
       )
-
       self.optim.zero_grad()
       loss.backward()
       self.optim.step()
+      # self.lr_scheduler.step()
+      # print(self.lr_scheduler.get_lr())
 
       print(f"Average loss for epoch {epoch} was {loss.cpu().detach()}")
 
-      if epoch % 200 == 0:
+      if epoch % 1000 == 0 and epoch != 0:
         transform = torch.tensor([
-            [
-              -0.9938939213752747,
-              -0.10829982906579971,
-              0.021122142672538757,
-              0.08514608442783356,
-            ],
-            [
-              0.11034037917852402,
-              -0.9755136370658875,
-              0.19025827944278717,
-              0.7669557332992554,
-            ],
-            [
-              0.0,
-              0.19142703711986542,
-              0.9815067052841187,
-              3.956580400466919,
-            ],
-            [
-              0.0,
-              0.0,
-              0.0,
-              1.0,
-            ],
-          ]
+                [
+                    -0.9938939213752747,
+                    -0.10829982906579971,
+                    0.021122142672538757,
+                    0.08514608442783356
+                ],
+                [
+                    0.11034037917852402,
+                    -0.9755136370658875,
+                    0.19025827944278717,
+                    0.7669557332992554
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.9815067052841187,
+                    3.956580400466919
+                ],
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                ]
+            ]
         )
         img_tensor = render_img(self, (800, 800), train_data.focal_length, transform)
         save_image(img_tensor, os.path.join(img_folder, f'img_{epoch}.png'))
