@@ -8,6 +8,4 @@ if __name__ == "__main__":
   # 100 train images
   # ~ 1000 epochs (over 100 images)
   num_epochs = 10000
-  nerf.train(num_epochs, data["train"], data["val"])
-  # x = torch.tensor([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
-  # print(x.swapaxes(0, 1)) 
+  nerf.train(num_epochs, data["train"])
