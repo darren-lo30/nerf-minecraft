@@ -18,13 +18,12 @@ class SimpleNERF(nn.Module):
     for i in range(num_layers_coord):
       num_in = 256 if i != 0 else density_embed_dim * 3 * 2
       self.coordinate_net.append(nn.Linear(num_in, 256))
-      if i != num_layers_coord - 1:
-        self.coordinate_net.append(nn.ReLU())
+      self.coordinate_net.append(nn.ReLU())
 
     self.coordinate_net = nn.Sequential(*self.coordinate_net)
 
-    self.color_net = nn.Linear(256 + 3 * 2 * color_embed_dim, 3)
-    self.density_net = nn.Linear(256, 1)
+    self.color_net = nn.Sequential(nn.Linear(256 + 3 * 2 * color_embed_dim, 256), nn.Linear(256, 3), nn.Sigmoid())
+    self.density_net = nn.Sequential(nn.Linear(256, 256), nn.Linear(256, 1), nn.ReLU())
 
     self.color_embeds = PositionalEmbedding(color_embed_dim)
     self.density_embed = PositionalEmbedding(density_embed_dim)
@@ -49,7 +48,7 @@ class PositionalEmbedding(nn.Module):
     self.dim = dim
 
   def forward(self, x):
-    coefs = torch.pow(2, torch.arange(0, self.dim)) * torch.pi
+    coefs = torch.pow(2, torch.arange(0, self.dim)) 
     x = coefs.to(x.get_device()) * x.unsqueeze(dim=2)
 
     # batch_size x 3 x 2L
@@ -64,14 +63,14 @@ class PositionalEmbedding(nn.Module):
 class SimpleNERFModel:
   def __init__(self, device):
     # Hyperparameters
-    self.t_near = 0
+    self.t_near = 2
     self.t_far = 10
-    self.N = 128
+    self.N = 64
     self.lr = 5e-4
 
 
-    color_embed_dim = 10
-    density_embed_dim = 4
+    color_embed_dim = 6
+    density_embed_dim = 6
     self.model = SimpleNERF(color_embed_dim, density_embed_dim).to(device)
     self.optim = torch.optim.Adam(self.model.parameters(), self.lr)
     # self.lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optim, 0.99)
@@ -80,18 +79,17 @@ class SimpleNERFModel:
   def compute_color(self, o, d):
     batch_size = d.shape[0]
     # Samples N points randomly from N evenly spaced bins, returns 0 and those N points totalling to N + 1 points
-    t = sample_bins_uniform(batch_size, self.N, self.t_near, self.t_far).to(self.device)
-    deltas = t[:, :-1] - t[:, 1:]
-    # Eliminate starting 0
-    t = t[:, 1:]
+    t = sample_bins_uniform(batch_size, self.N, self.t_near, self.t_far).to(self.device) # (batch_size, N)
+    deltas = t[:, 1:] - t[:, :-1] # (batch_size, N - 1)
+    deltas = torch.cat([deltas, torch.tensor([1e10],  device=self.device).expand(t.shape[0], -1)], dim = 1)  # (batch_size, N)
 
-    t = t.unsqueeze(dim=2)
-    d = d.unsqueeze(dim=1)
-    o = o.unsqueeze(dim=1)
-    # Yields N + 1 points along the ray
-    # (batch_size, N + 1, 3)
+    t = t.unsqueeze(dim=2) # (batch_size, N, 1)
+    d = d.unsqueeze(dim=1) # (batch_size, 1, 3)
+    o = o.unsqueeze(dim=1) # (batch_size, 1, 3)
+
+    # (batch_size, N, 3)
     x = o + t * d
-    d = d.expand(-1, x.shape[1], -1)
+    d = d.expand(-1, x.shape[1], -1) #(batchsize, N, 3)
 
     # Convert to (batch_size * N, 3) to pass it in to model
     x = torch.flatten(x, start_dim=0, end_dim=1)
@@ -100,10 +98,9 @@ class SimpleNERFModel:
 
     colors = colors.reshape(batch_size, self.N, 3)
     densitys = densitys.reshape(batch_size, self.N)
-
     alphas = 1 - torch.exp(-densitys * deltas)
-    transmittances = torch.cumprod(1 - alphas, dim=1)
-    color = torch.sum((transmittances * (1 - alphas)).unsqueeze(2) * colors, dim=1)
+    transmittances = torch.cumprod(1 - alphas + 1e-10, dim=1)
+    color = torch.sum((transmittances * alphas).unsqueeze(2) * colors, dim=1)
 
     return color.to(device=self.device)
 
@@ -112,7 +109,7 @@ class SimpleNERFModel:
     num_epochs,
     train_data,
     valid_data,
-    batch_size=4096,
+    batch_size=6400,
     img_folder = './results'
   ):
     for epoch in range(num_epochs):
@@ -120,46 +117,29 @@ class SimpleNERFModel:
 
       (rays_d, rays_o, colors) = (rays_d.to(self.device), rays_o.to(self.device), colors.to(self.device))
       pred_color = self.compute_color(rays_o, rays_d)
+
       loss = nn.functional.mse_loss(
-        pred_color,
         colors,
+        pred_color,
         reduction="mean",
       )
+      # if epoch % 20 == 0:
+      #   save_image(pred_color.transpose(0, 1).reshape(3, 80, 80), os.path.join('./results', f'img_test_{epoch}.png'))
+
       self.optim.zero_grad()
       loss.backward()
+      torch.nn.utils.clip_grad_value_(self.model.parameters(), 1)
       self.optim.step()
       # self.lr_scheduler.step()
       # print(self.lr_scheduler.get_lr())
 
       print(f"Average loss for epoch {epoch} was {loss.cpu().detach()}")
 
-      if epoch % 1000 == 0 and epoch != 0:
-        transform = torch.tensor([
-                [
-                    -0.9938939213752747,
-                    -0.10829982906579971,
-                    0.021122142672538757,
-                    0.08514608442783356
-                ],
-                [
-                    0.11034037917852402,
-                    -0.9755136370658875,
-                    0.19025827944278717,
-                    0.7669557332992554
-                ],
-                [
-                    0.0,
-                    0.0,
-                    0.9815067052841187,
-                    3.956580400466919
-                ],
-                [
-                    0.0,
-                    0.0,
-                    0.0,
-                    1.0
-                ]
-            ]
+      if epoch % 25 == 0:
+        transform = torch.tensor([[ 6.8935126e-01, 5.3373039e-01, -4.8982298e-01, -1.9745398e+00],
+                                  [-7.2442728e-01, 5.0788772e-0, -4.6610624e-01, -1.8789345e+00],
+                                  [ 1.4901163e-08, 6.7615211e-01, 7.3676193e-01, 2.9699826e+00],
+                                  [ 0.0000000e+00, 0.0000000e+00,  0.0000000e+00,  1.0000000e+00]]
         )
-        img_tensor = render_img(self, (800, 800), train_data.focal_length, transform)
+        img_tensor = render_img(self, (80, 80), train_data.focal_length, transform)
         save_image(img_tensor, os.path.join(img_folder, f'img_{epoch}.png'))

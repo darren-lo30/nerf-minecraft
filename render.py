@@ -21,7 +21,6 @@ def render_img(nerf, img_dims, focal_length, camera_transform):
   colors = torch.cat(colors, dim = 0) # (height * width, 3)
   colors = colors.swapaxes(0, 1)
   colors = colors.reshape((3, height, width))
-
   colors = torch.clamp(colors, 0, 1)
 
   return colors

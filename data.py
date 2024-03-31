@@ -13,7 +13,8 @@ class NERFData():
     self.focal_length = focal_length
 
   def sample_rand_img_rays(self, num_rays):
-    idx = randrange(4)
+    idx = randrange(len(self.imgs))
+    # idx = 0
     img, transform = self.imgs[idx], self.transforms[idx]
 
     ray_d, ray_o, colors  = get_rays(img, self.focal_length, transform)
@@ -25,8 +26,9 @@ class NERFData():
     ray_o = ray_o.expand(num_rays, -1)
 
     return sampled_ray_d, ray_o, sampled_colors
+    # return ray_d, ray_o, colors
   
-def load_data(path):
+def load_data(path, scale_ratio = 1./8):
   splits = ['train', 'test', 'val']
   files = {}
   dataset = {}
@@ -47,6 +49,11 @@ def load_data(path):
       img_path = os.path.normpath(os.path.join(path, img_path))
 
       img = torchvision.io.read_image(img_path)
+      width, height = img.shape[1], img.shape[2]
+
+      resize_fn = torchvision.transforms.Resize((int(width * scale_ratio), int(height * scale_ratio)))
+      img = resize_fn(img)
+      width, height = img.shape[1], img.shape[2]
 
       transform_mat = torch.tensor(frame['transform_matrix'])
 
@@ -55,7 +62,6 @@ def load_data(path):
       # Equivalent to the camera2world matrix / inverse of view matrix
       split_transforms.append(transform_mat)
     
-      width = img.shape[1]
       # Distance from camera to img plane
       focal_length = (0.5 * width) / np.tan(0.5 * camera_angle)
       dataset[split] = NERFData(split_imgs, split_transforms, focal_length)
@@ -69,10 +75,10 @@ def get_rays(img, focal_length, camera_to_world):
   # Camera space
   x, y = torch.meshgrid(torch.arange(width, dtype=torch.float32), torch.arange(height, dtype=torch.float32), indexing='xy')
   # Recenter and rescale
-  x = (x - width / 2) / focal_length
-  y = (y - height / 2) / focal_length
+  x = (x - width * 0.5) / focal_length
+  y =  -(y - height * 0.5) / focal_length
   c_ray_dir = torch.stack([x, y, -torch.ones_like(x)], dim=-1).flatten(start_dim=0, end_dim=1)
-  colors = torch.flatten(img[:3, :, :], start_dim=1) / 255.
+  colors = torch.flatten(img[:3, :, :], start_dim=1) / 256.
   colors = colors.swapaxes(0, 1)
 
   c_ray_origin = torch.tensor([0, 0, 0, 1], dtype=torch.float32)
