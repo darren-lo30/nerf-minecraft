@@ -143,3 +143,10 @@ class SimpleNERFModel:
       lr_scheduler.step()
 
       print(f"Average loss for epoch {epoch} was {loss.cpu().detach()}")
+
+  def save(self, path):
+    torch.save(self.model.state_dict(), path)
+
+  def load(self, path):
+    self.model.load_state_dict(torch.load(path))
+    self.model.eval()
