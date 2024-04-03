@@ -1,24 +1,41 @@
 from simple_nerf import SimpleNERFModel
 from data import load_data
 from utils import get_device
-from render import render_gif, render_img
-import torch
-from torchvision.utils import save_image
-import os
+from render import render_gif
+import argparse
+import sys
+
 if __name__ == "__main__":
-  data = load_data("./data/lego", scale_ratio=0.1)
+  parser = argparse.ArgumentParser(prog="NERF", description="An implementation of Neural Radiance Fields")
+
+  subparsers = parser.add_subparsers(help="mode", dest='cmd')
+
+  parser.add_argument("train", action="store_true", default=True)
+  parser.add_argument("load", action="store_true")
+
+  is_train = "--train" in sys.argv
+  is_load = "--load" in sys.argv and not is_train
+
+  train_parser = subparsers.add_parser("train")
+  train_parser.add_argument("--data", type=str, required=True)
+  train_parser.add_argument("--scale", type=float, default=1.0)
+  train_parser.add_argument("--epochs", type=int, default=5000)
+  train_parser.add_argument("--save", type=str, default="")
+
+  load_parser = subparsers.add_parser("load")
+  load_parser.add_argument("--model", type=str, required=True)
+
+  args = parser.parse_args()
+
   nerf = SimpleNERFModel(device=get_device())
-  # 100 train images
-  # ~ 1000 epochs (over 100 images)
-  # num_epochs = 1000
-  # nerf.train(num_epochs, data["train"])
-  # nerf.save('./models/nerf')
-  nerf.load('./models/nerf')
-  # transform = torch.tensor([[-0.5469, -0.5920,  0.5920,  2.5115],
-  #                           [ 0.8372, -0.3868,  0.3868,  1.6408],
-  #                           [-0.0000, -0.7071, -0.7071,  3.0000],
-  #                           [ 0.0000,  0.0000,  0.0000,  1.0000]])
-  # img_tensor = render_img(nerf, (80, 80), 110, transform)
-  # save_image(img_tensor, os.path.join('./results', "img.png"))
-  render_gif(nerf, (80, 80), 110, 3, 3)
-  
+
+  if args.cmd == 'train':
+    data = load_data(args.data, scale_ratio=args.scale)
+    nerf.train(args.epochs, data["train"])
+    if args.save != "":
+      nerf.save(args.save)
+  else:
+    nerf.load(args.model)
+
+  height, width = 800, 800
+  render_gif(nerf, (height, width), 1111, 3, 4)

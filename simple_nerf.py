@@ -109,12 +109,14 @@ class SimpleNERFModel:
     return color.to(device=self.device)
 
   def train(self, num_epochs, train_data, batch_size=4096, img_folder="./results"):
+    img_dims = train_data.imgs[0].shape[1:3]
+
     final_lr = 5e-5
     decay = (final_lr / self.lr) ** (1.0 / num_epochs)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optim, decay)
 
     for epoch in range(num_epochs):
-      if epoch % 25 == 0:
+      if epoch % 3000 == 0:
         transform = torch.tensor(
           [
             [6.8935126e-01, 5.3373039e-01, -4.8982298e-01, -1.9745398e00],
@@ -123,7 +125,7 @@ class SimpleNERFModel:
             [0.0000000e00, 0.0000000e00, 0.0000000e00, 1.0000000e00],
           ]
         )
-        img_tensor = render_img(self, (80, 80), train_data.focal_length, transform)
+        img_tensor = render_img(self, img_dims, train_data.focal_length, transform)
         save_image(img_tensor, os.path.join(img_folder, f"img_{epoch}.png"))
 
       (rays_d, rays_o, colors) = train_data.sample_rand_img_rays(batch_size)
