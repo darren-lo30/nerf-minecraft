@@ -55,10 +55,10 @@ class PositionalEmbedding(nn.Module):
 
   def forward(self, x):
     coefs = torch.pow(2, torch.arange(0, self.dim))
-    x = coefs.to(x.get_device()) * x.unsqueeze(dim=2)
+    x = coefs.to(x.device) * x.unsqueeze(dim=2)
 
     # batch_size x 3 x 2L
-    embeddings = torch.zeros((x.shape[0], 3, self.dim * 2), device=x.get_device())
+    embeddings = torch.zeros((x.shape[0], 3, self.dim * 2), device=x.device)
     embeddings[:, :, ::2] = torch.sin(x)
     embeddings[:, :, 1::2] = torch.cos(x)
 

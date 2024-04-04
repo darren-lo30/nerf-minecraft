@@ -1,14 +1,14 @@
 from simple_nerf import SimpleNERFModel
 from data import load_data
 from utils import get_device
-from render import render_gif
+from render import render_gif, render_voxels
 import argparse
 import sys
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(prog="NERF", description="An implementation of Neural Radiance Fields")
 
-  subparsers = parser.add_subparsers(help="mode", dest='cmd')
+  subparsers = parser.add_subparsers(help="mode", dest="cmd")
 
   parser.add_argument("train", action="store_true", default=True)
   parser.add_argument("load", action="store_true")
@@ -29,8 +29,9 @@ if __name__ == "__main__":
 
   nerf = SimpleNERFModel(device=get_device())
 
-  if args.cmd == 'train':
+  if args.cmd == "train":
     data = load_data(args.data, scale_ratio=args.scale)
+    print(data['train'].focal_length)
     nerf.train(args.epochs, data["train"])
     if args.save != "":
       nerf.save(args.save)
@@ -38,4 +39,5 @@ if __name__ == "__main__":
     nerf.load(args.model)
 
   height, width = 800, 800
-  render_gif(nerf, (height, width), 1111, 3, 4)
+  # render_gif(nerf, (height, width), 1111, 3, 4)
+  render_voxels(nerf, (1, 1, 1))

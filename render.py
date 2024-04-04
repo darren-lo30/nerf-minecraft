@@ -3,6 +3,8 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import imageio
+import matplotlib.pyplot as plt
+
 
 
 def render_img(nerf, img_dims, focal_length, camera_transform):
@@ -36,7 +38,7 @@ def get_transform_mat(pos, direction):
   change_coordinate_space = torch.tensor([[1, 0, 0, 0], [0, 0, -1, 0], [0, 1, 0, 0], [0, 0, 0, 1]], dtype=torch.float32)
 
   direction = change_coordinate_space[:3, :3] @ direction
-  pos = change_coordinate_space @ torch.cat([pos, torch.tensor([1.])], dim = -1)
+  pos = change_coordinate_space @ torch.cat([pos, torch.tensor([1.0])], dim=-1)
   pos = pos[:3]
 
   t = torch.zeros((4, 4), dtype=torch.float32)
@@ -53,7 +55,7 @@ def get_transform_mat(pos, direction):
 
   # Change of basis
   t[:3, 0] = right
-  t[:3, 1] = forward 
+  t[:3, 1] = forward
   t[:3, 2] = up
 
   t = t @ change_coordinate_space
@@ -70,7 +72,7 @@ def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius):
   zs = torch.cos(thetas) * camera_radius
 
   for i, (x, y, z) in enumerate(zip(xs, ys, zs)):
-    print(f'Rendering frame {i}')
+    print(f"Rendering frame {i}")
     pos = torch.tensor([x, y, z], dtype=torch.float32)
     # View direction is to origin
     transform = get_transform_mat(pos, -pos)
@@ -82,11 +84,45 @@ def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius):
   imageio.mimsave("./results/test.gif", images)
 
 
-# Render a 3D mesh
-# def render_mesh(nerf, world_dims, sample_density = 50, density_threshold):
+# # Render a 3D mesh
+# def render_mesh(nerf, world_dims, sample_density = 50, density_threshold = 0.5):
 #   grid_points = torch.stack([torch.linspace(-dim, dim, sample_density) for dim in world_dims], dim = -1, dtype=torch.float32)
 #   print(grid_points.shape)
 #   dirs = torch.zeros_like(grid_points)
 
+
 # Render a 3D voxel mesh (cubes)
-# def render_voxel_mesh(nerf, world_dims, sample_density, density_threshold):
+def render_voxels(nerf, world_dims, sample_density=50, density_threshold=0.5):
+  x, y, z = torch.meshgrid([torch.linspace(-dim, dim, sample_density) for dim in world_dims], indexing="ij")
+
+  grid_points = torch.stack([x, y, z])
+  grid_points = grid_points.permute(1, 2, 3, 0)
+  world_shape = grid_points.shape[:3]
+  grid_points = grid_points.flatten(start_dim=0, end_dim=2)
+
+  all_densitys = []
+  grids_data = DataLoader(grid_points, shuffle=False, batch_size=4096)
+  for grid_pt in grids_data:
+    null_dirs = torch.zeros_like(grid_pt)
+
+    grid_pt = grid_pt.to(nerf.device)
+    null_dirs = null_dirs.to(nerf.device)
+    
+    _, densitys = nerf.model(grid_pt, null_dirs)
+    all_densitys.append(densitys.detach().cpu())
+
+  all_densitys = torch.cat(all_densitys, dim = 0)
+  all_densitys = all_densitys.reshape(world_shape)
+
+  voxel_map = all_densitys > density_threshold
+
+  voxel_map = voxel_map.cpu().numpy()
+
+  ax = plt.figure().add_subplot(projection='3d')
+  ax.voxels(voxel_map, edgecolor='k')
+
+  plt.savefig("./results/voxel.png")
+
+  
+
+  # Render out voxel map using ???
