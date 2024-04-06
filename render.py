@@ -4,6 +4,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import numpy as np
 import imageio
 import matplotlib.pyplot as plt
+import mcschematic
 
 
 
@@ -92,7 +93,7 @@ def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius):
 
 
 # Render a 3D voxel mesh (cubes)
-def render_voxels(nerf, world_dims, sample_density=50, density_threshold=0.5):
+def generate_voxel_map(nerf, world_dims, sample_density=50, density_threshold=0.5):
   x, y, z = torch.meshgrid([torch.linspace(-dim, dim, sample_density) for dim in world_dims], indexing="ij")
 
   grid_points = torch.stack([x, y, z])
@@ -116,13 +117,25 @@ def render_voxels(nerf, world_dims, sample_density=50, density_threshold=0.5):
 
   voxel_map = all_densitys > density_threshold
 
+  return voxel_map
+
+def render_voxels(voxel_map, out_file):
   voxel_map = voxel_map.cpu().numpy()
 
   ax = plt.figure().add_subplot(projection='3d')
   ax.voxels(voxel_map, edgecolor='k')
 
-  plt.savefig("./results/voxel.png")
+  plt.savefig(out_file)
 
-  
+# Generate a minecraft world with blocks
+def generate_mc_schematic(voxel_map, save_folder, schem_name):
+  schem = mcschematic.MCSchematic()
 
-  # Render out voxel map using ???
+  for x in range(voxel_map.shape[0]):
+    for y in range(voxel_map.shape[1]):
+      for z in range(voxel_map.shape[2]):
+        # y in mc is up but z in nerf world space
+        if(voxel_map[x, y, z]):
+          schem.setBlock((x, z, y), "minecraft:stone")
+
+  schem.save(save_folder, schem_name, mcschematic.Version.JE_1_16_5)

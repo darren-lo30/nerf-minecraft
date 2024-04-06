@@ -1,0 +1,6 @@
+imageio==2.32.0
+matplotlib==3.6.3
+mcschematic==11.4.2
+numpy==1.22.3
+torch==2.1.1
+torchvision==0.16.1
