@@ -35,7 +35,9 @@ def sample_piececwise_pdf(weights, N_samples, start, end):
   cdf_end = cdf.gather(1, t1_idx)
   cdf_start = cdf.gather(1, t1_idx - 1)
 
-  return t[t1_idx - 1] + delta_t * (unifs - cdf_start) / (cdf_end - cdf_start)
+  t = t[t1_idx - 1] + delta_t * (unifs - cdf_start) / (cdf_end - cdf_start)
+  t, _ = torch.sort(t, dim = -1)
+  return t
 
   
 

@@ -23,7 +23,7 @@ def render_img(nerf, img_dims, focal_length, camera_transform, N_points = 64):
     with torch.no_grad():
       batch_size = d.shape[0]
       t = sample_bins_uniform(batch_size, N_points, nerf.t_near, nerf.t_far).to(nerf.device)  # (batch_size, N)
-      c, _ = nerf.compute_color(nerf.coarse_model, t, o, d)
+      c, _ = nerf.compute_color(nerf.fine_model, t, o, d)
       colors.append(c)
 
   colors = torch.cat(colors, dim=0)  # (height * width, 3)
@@ -111,7 +111,7 @@ def generate_voxel_map(nerf, world_dims, sample_density=50, density_threshold=0.
     grid_pt = grid_pt.to(nerf.device)
     null_dirs = null_dirs.to(nerf.device)
     
-    _, densitys = nerf.coarse_model(grid_pt, null_dirs)
+    _, densitys = nerf.fine_model(grid_pt, null_dirs)
     all_densitys.append(densitys.detach().cpu())
 
   all_densitys = torch.cat(all_densitys, dim = 0)

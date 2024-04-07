@@ -73,7 +73,7 @@ class SimpleNERFModel:
     # Hyperparameters
     self.t_near = 2
     self.t_far = 6
-    self.N_fine = 128
+    self.N_fine = 64
     self.N_coarse = 64
     self.lr = 5e-4
 
@@ -121,7 +121,7 @@ class SimpleNERFModel:
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optim, decay)
 
     for epoch in range(num_epochs):
-      if epoch % 50 == 0:
+      if epoch % 20 == 0:
         transform = torch.tensor(
           [
             [6.8935126e-01, 5.3373039e-01, -4.8982298e-01, -1.9745398e00],
@@ -141,9 +141,8 @@ class SimpleNERFModel:
       t_coarse = sample_bins_uniform(batch_size, self.N_coarse, self.t_near, self.t_far).to(self.device)  # (batch_size, N)
 
       coarse_pred_color, weights = self.compute_color(self.coarse_model, t_coarse, rays_o, rays_d)
-      # t_fine = sample_piececwise_pdf(weights.detach(), self.N_fine, self.t_near, self.t_far).to(self.device)
-
-      # fine_pred_color, _ = self.compute_color(self.fine_model, t_fine, rays_o, rays_d)
+      t_fine = sample_piececwise_pdf(weights.detach(), self.N_fine, self.t_near, self.t_far).to(self.device)
+      fine_pred_color, _ = self.compute_color(self.fine_model, t_fine, rays_o, rays_d)
 
       coarse_loss = nn.functional.mse_loss(
         colors,
@@ -151,13 +150,13 @@ class SimpleNERFModel:
         reduction="mean",
       )
 
-      # fine_loss = nn.functional.mse_loss(
-      #   colors,
-      #   fine_pred_color,
-      #   reduction="mean",
-      # )
+      fine_loss = nn.functional.mse_loss(
+        colors,
+        fine_pred_color,
+        reduction="mean",
+      )
 
-      loss = coarse_loss
+      loss = coarse_loss + fine_loss
 
       self.optim.zero_grad()
       loss.backward()
