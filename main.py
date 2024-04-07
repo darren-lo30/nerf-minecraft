@@ -1,7 +1,7 @@
 from simple_nerf import SimpleNERFModel
 from data import load_data
 from utils import get_device
-from render import generate_voxel_map, render_voxels, generate_mc_schematic
+from render import generate_voxel_map, render_voxels, generate_mc_schematic, render_img
 import argparse
 import sys
 
@@ -37,10 +37,8 @@ if __name__ == "__main__":
   else:
     nerf.load(args.model)
 
-  height, width = 800, 800
   # render_gif(nerf, (height, width), 1111, 3, 4)
-  # render_voxels(nerf, (1, 1, 1))
-  voxel_map = generate_voxel_map(nerf, (1, 1, 1))
-  render_voxels(voxel_map, "./results/voxel.png")
-  generate_mc_schematic(voxel_map, './results', 'my-schem')  
+  # voxel_map = generate_voxel_map(nerf, (1, 1, 1))
+  # render_voxels(voxel_map, "./results/voxel.png")
+  # generate_mc_schematic(voxel_map, './results', 'my-schem')  
 

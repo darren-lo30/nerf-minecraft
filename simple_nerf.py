@@ -1,9 +1,11 @@
 from torch import nn
 import torch
-from utils import sample_bins_uniform
+from utils import sample_bins_uniform, sample_piececwise_pdf
 from render import render_img
 from torchvision.utils import save_image
 import os
+from itertools import chain
+
 
 
 # Basic NERF with only one sampling method
@@ -71,22 +73,24 @@ class SimpleNERFModel:
     # Hyperparameters
     self.t_near = 2
     self.t_far = 6
-    self.N = 64
+    self.N_fine = 128
+    self.N_coarse = 64
     self.lr = 5e-4
 
     color_embed_dim = 6
     density_embed_dim = 6
-    self.model = SimpleNERF(color_embed_dim, density_embed_dim).to(device)
-    self.optim = torch.optim.Adam(self.model.parameters(), self.lr)
+    self.fine_model = SimpleNERF(color_embed_dim, density_embed_dim).to(device)
+    self.coarse_model = SimpleNERF(color_embed_dim, density_embed_dim).to(device)
+
+    self.optim = torch.optim.Adam(chain(self.coarse_model.parameters(), self.fine_model.parameters()), self.lr)
     self.device = device
 
-  def compute_color(self, o, d):
+  def compute_color(self, model, t, o, d):
     batch_size = d.shape[0]
-    # Samples N points randomly from N evenly spaced bins, returns 0 and those N points totalling to N + 1 points
-    t = sample_bins_uniform(batch_size, self.N, self.t_near, self.t_far).to(self.device)  # (batch_size, N)
     deltas = t[:, 1:] - t[:, :-1]  # (batch_size, N - 1)
     deltas = torch.cat([deltas, torch.tensor([1e10], device=self.device).expand(t.shape[0], -1)], dim=1)  # (batch_size, N)
 
+    N = t.shape[1]
     t = t.unsqueeze(dim=2)  # (batch_size, N, 1)
     d = d.unsqueeze(dim=1)  # (batch_size, 1, 3)
     o = o.unsqueeze(dim=1)  # (batch_size, 1, 3)
@@ -98,15 +102,16 @@ class SimpleNERFModel:
     # Convert to (batch_size * N, 3) to pass it in to model
     x = torch.flatten(x, start_dim=0, end_dim=1)
     d = torch.flatten(d, start_dim=0, end_dim=1)
-    colors, densitys = self.model(x, d)
+    colors, densitys = model(x, d)
 
-    colors = colors.reshape(batch_size, self.N, 3)
-    densitys = densitys.reshape(batch_size, self.N)
+    colors = colors.reshape(batch_size, N, 3)
+    densitys = densitys.reshape(batch_size, N)
     alphas = 1 - torch.exp(-densitys * deltas)
     transmittances = torch.cumprod(1 - alphas + 1e-10, dim=1)
-    color = torch.sum((transmittances * alphas).unsqueeze(2) * colors, dim=1)
+    weights = transmittances * alphas
+    color = torch.sum(weights.unsqueeze(2) * colors, dim=1)
 
-    return color.to(device=self.device)
+    return color.to(device=self.device), weights
 
   def train(self, num_epochs, train_data, batch_size=4096, img_folder="./results"):
     img_dims = train_data.imgs[0].shape[1:3]
@@ -116,7 +121,7 @@ class SimpleNERFModel:
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(self.optim, decay)
 
     for epoch in range(num_epochs):
-      if epoch % 3000 == 0:
+      if epoch % 50 == 0:
         transform = torch.tensor(
           [
             [6.8935126e-01, 5.3373039e-01, -4.8982298e-01, -1.9745398e00],
@@ -131,13 +136,28 @@ class SimpleNERFModel:
       (rays_d, rays_o, colors) = train_data.sample_rand_img_rays(batch_size)
 
       (rays_d, rays_o, colors) = (rays_d.to(self.device), rays_o.to(self.device), colors.to(self.device))
-      pred_color = self.compute_color(rays_o, rays_d)
 
-      loss = nn.functional.mse_loss(
+      # Samples N points randomly from N evenly spaced bins, returns 0 and those N points totalling to N + 1 points
+      t_coarse = sample_bins_uniform(batch_size, self.N_coarse, self.t_near, self.t_far).to(self.device)  # (batch_size, N)
+
+      coarse_pred_color, weights = self.compute_color(self.coarse_model, t_coarse, rays_o, rays_d)
+      # t_fine = sample_piececwise_pdf(weights.detach(), self.N_fine, self.t_near, self.t_far).to(self.device)
+
+      # fine_pred_color, _ = self.compute_color(self.fine_model, t_fine, rays_o, rays_d)
+
+      coarse_loss = nn.functional.mse_loss(
         colors,
-        pred_color,
+        coarse_pred_color,
         reduction="mean",
       )
+
+      # fine_loss = nn.functional.mse_loss(
+      #   colors,
+      #   fine_pred_color,
+      #   reduction="mean",
+      # )
+
+      loss = coarse_loss
 
       self.optim.zero_grad()
       loss.backward()
@@ -147,8 +167,15 @@ class SimpleNERFModel:
       print(f"Average loss for epoch {epoch} was {loss.cpu().detach()}")
 
   def save(self, path):
-    torch.save(self.model.state_dict(), path)
+    torch.save({
+      'coarse': self.coarse_model.state_dict(),
+      'fine': self.fine_model.state_dict()
+    }, path)
 
   def load(self, path):
-    self.model.load_state_dict(torch.load(path))
-    self.model.eval()
+    data = torch.load(path)
+    self.coarse_model.load_state_dict(data['coarse'])
+    self.fine_model.load_state_dict(data['fine'])
+
+    self.coarse_model.eval()
+    self.fine_model.eval()

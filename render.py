@@ -5,16 +5,15 @@ import numpy as np
 import imageio
 import matplotlib.pyplot as plt
 import mcschematic
+from utils import sample_bins_uniform
 
 
-
-def render_img(nerf, img_dims, focal_length, camera_transform):
+def render_img(nerf, img_dims, focal_length, camera_transform, N_points = 64):
   width, height = img_dims
   img = torch.zeros((3, height, width))
 
   rays_d, ray_o, _ = get_rays(img, focal_length, camera_transform)
   ray_o = ray_o.expand(rays_d.shape[0], -1)
-
   dataloader = DataLoader(TensorDataset(rays_d, ray_o), batch_size=4096, shuffle=False)
   colors = []
 
@@ -22,7 +21,10 @@ def render_img(nerf, img_dims, focal_length, camera_transform):
     d, o = d.to(nerf.device), o.to(nerf.device)
     # HERE
     with torch.no_grad():
-      colors.append(nerf.compute_color(o, d))
+      batch_size = d.shape[0]
+      t = sample_bins_uniform(batch_size, N_points, nerf.t_near, nerf.t_far).to(nerf.device)  # (batch_size, N)
+      c, _ = nerf.compute_color(nerf.coarse_model, t, o, d)
+      colors.append(c)
 
   colors = torch.cat(colors, dim=0)  # (height * width, 3)
   colors = colors.swapaxes(0, 1)
@@ -109,7 +111,7 @@ def generate_voxel_map(nerf, world_dims, sample_density=50, density_threshold=0.
     grid_pt = grid_pt.to(nerf.device)
     null_dirs = null_dirs.to(nerf.device)
     
-    _, densitys = nerf.model(grid_pt, null_dirs)
+    _, densitys = nerf.coarse_model(grid_pt, null_dirs)
     all_densitys.append(densitys.detach().cpu())
 
   all_densitys = torch.cat(all_densitys, dim = 0)
