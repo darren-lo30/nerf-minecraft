@@ -6,6 +6,8 @@ import imageio
 import matplotlib.pyplot as plt
 import mcschematic
 from utils import sample_bins_uniform
+import mcubes
+
 
 
 def render_img(nerf, img_dims, focal_length, camera_transform, N_points = 64):
@@ -94,8 +96,7 @@ def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius):
 #   dirs = torch.zeros_like(grid_points)
 
 
-# Render a 3D voxel mesh (cubes)
-def generate_voxel_map(nerf, world_dims, sample_density=50, density_threshold=0.5):
+def generate_densities(nerf, world_dims, sample_density=50):
   x, y, z = torch.meshgrid([torch.linspace(-dim, dim, sample_density) for dim in world_dims], indexing="ij")
 
   grid_points = torch.stack([x, y, z])
@@ -117,6 +118,11 @@ def generate_voxel_map(nerf, world_dims, sample_density=50, density_threshold=0.
   all_densitys = torch.cat(all_densitys, dim = 0)
   all_densitys = all_densitys.reshape(world_shape)
 
+  return all_densitys
+
+# Render a 3D voxel mesh (cubes)
+def generate_voxel_map(nerf, world_dims, sample_density=50, density_threshold=0.5):
+  all_densitys = generate_densities(nerf, world_dims, sample_density)
   voxel_map = all_densitys > density_threshold
 
   return voxel_map
@@ -141,3 +147,11 @@ def generate_mc_schematic(voxel_map, save_folder, schem_name):
           schem.setBlock((x, z, y), "minecraft:stone")
 
   schem.save(save_folder, schem_name, mcschematic.Version.JE_1_16_5)
+
+def generate_mesh(nerf, world_dims, save_path, sample_density=50, density_threshold=0.5):
+  densitys = generate_densities(nerf, world_dims, sample_density)
+  vertices, triangles = mcubes.marching_cubes(densitys.cpu().numpy(), density_threshold)
+
+  mcubes.export_mesh(vertices, triangles, save_path)
+
+  return vertices, triangles
