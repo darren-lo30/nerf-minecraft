@@ -25,10 +25,11 @@ def sample_piececwise_pdf(weights, N_samples, start, end):
   cdf = torch.cat([torch.zeros((weights.shape[0], 1), device=weights.device), cdf], dim = -1)
   
   delta_t = (end - start) / N_bins
-  t = torch.linspace(start, end, N_bins + 1, device = weights.device)
+  t = torch.linspace(start, end, N_bins + 1, device = weights.device) # (N_bins + 1)
   unifs = torch.rand(batch_size, N_samples).to(weights.device)
   
-  t1_idx = torch.searchsorted(cdf, unifs, right=True)
+  t1_idx = torch.searchsorted(cdf, unifs, right=True) 
+  t1_idx = torch.clamp(t1_idx, 1, t.shape[0] - 1) # 1 to N_bins
 
   # Index of the bin indicates t_bin to sample from
 
