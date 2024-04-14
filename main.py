@@ -1,7 +1,7 @@
 from simple_nerf import NERF
 from data import load_data
 from utils import get_device
-from render import generate_voxel_map, render_voxels, generate_mc_schematic, render_img, generate_mesh
+from render import generate_voxel_map, generate_mc_schematic, generate_mesh, render_gif
 import argparse
 import sys
 
@@ -25,6 +25,12 @@ if __name__ == "__main__":
 
   load_parser = subparsers.add_parser("load")
   load_parser.add_argument("--model", type=str, required=True)
+  load_parser.add_argument("--schem_dir", type=str, default="")
+  load_parser.add_argument("--mesh_dir", type=str, default="")
+  load_parser.add_argument("--gif_dir", type=str, default="")
+
+  load_parser.add_argument("--gif_dims", type=tuple, default=(800, 800))
+  load_parser.add_argument("--gif_focal", type=int, default=1111)
 
   args = parser.parse_args()
 
@@ -38,9 +44,12 @@ if __name__ == "__main__":
   else:
     nerf = NERF(device=get_device())
     nerf.load(args.model)
+    if args.schem_dir != "":
+      voxel_map = generate_voxel_map(nerf, (1, 1, 1))
+      generate_mc_schematic(voxel_map, args.schem_dir, 'my-schem')
+    
+    if args.mesh_dir != "":
+      generate_mesh(nerf, (1, 1, 1), save_path=args.mesh_dir)
 
-  # render_gif(nerf, (height, width), 1111, 3, 4)
-  voxel_map = generate_voxel_map(nerf, (1, 1, 1))
-  render_voxels(voxel_map, "./results/voxel.png")
-  # generate_mc_schematic(voxel_map, './results', 'my-schem')
-  generate_mesh(nerf, (1, 1, 1), save_path='./results/mesh.dae')
+    if args.gif_dir != "":
+      render_gif(nerf, args.gif_dims, args.gif_focal, 3, 4, args.gif_dir)

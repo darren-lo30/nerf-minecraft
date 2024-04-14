@@ -68,7 +68,7 @@ def get_transform_mat(pos, direction):
   return t
 
 
-def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius):
+def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius, save_path):
   images = []
   num_frames = 20
   thetas = torch.linspace(0, 2 * torch.pi, num_frames)
@@ -86,7 +86,7 @@ def render_gif(nerf, gif_dims, focal_length, camera_height, camera_radius):
     img = img.permute(1, 2, 0).numpy() * 255
     img = img.astype(np.uint8)
     images.append(img)
-  imageio.mimsave("./results/test.gif", images)
+  imageio.mimsave(save_path, images)
 
 
 # # Render a 3D mesh
